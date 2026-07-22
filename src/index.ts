@@ -383,9 +383,18 @@ app.post('/api/bins', c => {
   insertBin.run(id);
   const url = `${BASE_URL}/bin/${id}`;
   if (c.req.header('Accept')?.includes('application/json')) {
-    return c.json({ bin_id: id, endpoint: `${BASE_URL}/${id}`, dashboard: url });
+    return new Response(JSON.stringify({ bin_id: id, endpoint: `${BASE_URL}/${id}`, dashboard: url }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-ReqDump': 'true',
+        'X-ReqDump-Link': url
+      }
+    });
   }
-  return c.redirect(url, 302);
+  return new Response(null, {
+    status: 302,
+    headers: { Location: url, 'X-ReqDump': 'true', 'X-ReqDump-Link': url }
+  });
 });
 
 app.get('/api/bins/:id', c => {
