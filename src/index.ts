@@ -604,8 +604,9 @@ app.get('/sitemap.xml', c => new Response(`<?xml version="1.0" encoding="UTF-8"?
 
 app.get('/health', c => c.json({ ok: true, ts: new Date().toISOString() }));
 
-app.get('/api/badge/:id.svg', c => {
-  const binId = c.req.param('id');
+app.get('/api/badge/:id', c => {
+  let binId = c.req.param('id');
+  if (binId.endsWith('.svg')) binId = binId.slice(0, -4);
   const bin = getBin.get(binId) as Record<string, unknown> | undefined;
   if (!bin) {
     return new Response(badgeSvg('reqdump', 'bin not found', '#e05'), {
