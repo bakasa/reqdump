@@ -301,6 +301,17 @@ function binPage(binId: string, requests: Array<Record<string, unknown>>): strin
     Send any HTTP request to <strong style="color:var(--text)">${endpointUrl}/your-path</strong> to capture it. Requests expire after 24 hours.
   </p>
 
+  <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
+    <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent('Debugging webhooks with reqdump — open source HTTP request inspector, no signup')}&url=${encodeURIComponent(BASE_URL + '/bin/' + binId)}" target="_blank" class="btn btn-outline" style="font-size:.8rem;padding:.35rem .85rem;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg>
+      Share on X
+    </a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(BASE_URL + '/bin/' + binId)}" target="_blank" class="btn btn-outline" style="font-size:.8rem;padding:.35rem .85rem;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+      Share on LinkedIn
+    </a>
+  </div>
+
   ${requests.length === 0 ? `
   <div class="empty-state">
     <p>No requests yet</p>
@@ -335,6 +346,8 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
   }
 
   const methodClass = `badge-${(req.method as string).toLowerCase()}`;
+  const shareText = encodeURIComponent(`Inspected a ${req.method} request on @reqdump — open source webhook debugger, no signup needed`);
+  const shareUrl = encodeURIComponent(`${BASE_URL}/bin/${binId}/req/${req.id}`);
 
   return html(`
 <header><div class="container">
@@ -359,7 +372,13 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
 
     ${bodyContent ? `<h3 style="font-size:.9rem;margin-bottom:.5rem;margin-top:1rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">Body</h3><pre>${escapeHtml(bodyContent)}</pre>` : ''}
   </div>
-  <button class="copy-btn" onclick="navigator.clipboard.writeText(window.location.href)" style="margin-top:.5rem">Copy link to this request</button>
+  <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
+    <button class="copy-btn" onclick="navigator.clipboard.writeText(window.location.href)">Copy link to this request</button>
+    <a href="https://twitter.com/intent/tweet?text=${shareText}&url=${shareUrl}" target="_blank" class="btn btn-outline" style="font-size:.8rem;padding:.35rem .85rem;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg>
+      Share
+    </a>
+  </div>
 </div>
 `);
 }
@@ -374,6 +393,17 @@ function escapeHtml(s: string): string {
 
 const app = new Hono();
 
+app.get('/robots.txt', c => new Response('User-agent: *\nAllow: /\n', {
+  headers: { 'Content-Type': 'text/plain' }
+}));
+
+app.get('/sitemap.xml', c => new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>${BASE_URL}/</loc><priority>1.0</priority></url>
+</urlset>`, {
+  headers: { 'Content-Type': 'application/xml' }
+}));
+
 app.get('/health', c => c.json({ ok: true, ts: new Date().toISOString() }));
 
 app.get('/', c => htmlResponse(landingPage()));
@@ -381,19 +411,30 @@ app.get('/', c => htmlResponse(landingPage()));
 app.post('/api/bins', c => {
   const id = genId();
   insertBin.run(id);
-  const url = `${BASE_URL}/bin/${id}`;
-  if (c.req.header('Accept')?.includes('application/json')) {
-    return new Response(JSON.stringify({ bin_id: id, endpoint: `${BASE_URL}/${id}`, dashboard: url }), {
+  const endpoint = `${BASE_URL}/${id}`;
+  const dashboard = `${BASE_URL}/bin/${id}`;
+  const accept = c.req.header('Accept') || '';
+  if (accept.includes('application/json')) {
+    return new Response(JSON.stringify({ bin_id: id, endpoint, dashboard }), {
       headers: {
         'Content-Type': 'application/json',
         'X-ReqDump': 'true',
-        'X-ReqDump-Link': url
+        'X-ReqDump-Link': dashboard
       }
     });
   }
-  return new Response(null, {
-    status: 302,
-    headers: { Location: url, 'X-ReqDump': 'true', 'X-ReqDump-Link': url }
+  if (accept.includes('text/html')) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: dashboard, 'X-ReqDump': 'true', 'X-ReqDump-Link': dashboard }
+    });
+  }
+  return new Response(`Endpoint: ${endpoint}\nDashboard: ${dashboard}\n`, {
+    headers: {
+      'Content-Type': 'text/plain',
+      'X-ReqDump': 'true',
+      'X-ReqDump-Link': dashboard
+    }
   });
 });
 
