@@ -61,121 +61,197 @@ function formatRow(row: Record<string, unknown>): Record<string, unknown> {
   return r;
 }
 
-function html(content: string, title = 'ReqDump'): string {
+let totalCaptured = 0;
+const getTotalCaptured = db.prepare('SELECT COUNT(*) as count FROM requests');
+
+function html(content: string, title = 'ReqDump — Open-Source HTTP Request Inspector & Webhook Debugger'): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${title}</title>
-<meta name="description" content="Dead-simple HTTP request inspector. Create an endpoint, send requests, inspect them.">
+<meta name="description" content="Debug webhooks and inspect HTTP requests instantly. Free, open-source request inspector with zero signup. Self-host or use the live instance.">
+<meta property="og:title" content="reqdump — Open-Source HTTP Request Inspector">
+<meta property="og:description" content="Debug webhooks instantly. Zero signup. One click. Open source.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${BASE_URL}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="reqdump — HTTP Request Inspector">
+<meta name="twitter:description" content="Debug webhooks instantly. Zero signup. One click.">
+<link rel="canonical" href="${BASE_URL}">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-:root { --bg: #0f0f13; --surface: #1a1a24; --border: #2a2a3a; --text: #e4e4ec; --text-muted: #8888a0; --accent: #6366f1; --accent-hover: #818cf8; --success: #22c55e; --warn: #f59e0b; --font: 'SF Mono','Fira Code','Cascadia Code',monospace; }
-body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; }
-.container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
-header { padding: 2rem 0 0; }
-h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; }
-h1 span { color: var(--accent); }
-.subtitle { color: var(--text-muted); font-size: 1.05rem; margin-top: 0.5rem; }
-.btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-size: 1rem; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: all 0.15s; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+@keyframes pulse { 0%, 100% { opacity: .4; } 50% { opacity: .8; } }
+@keyframes scan { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+:root {
+  --bg: #08080c; --surface: #111118; --border: #1e1e2e;
+  --text: #e8e8ee; --text-muted: #6b6b80; --text-dim: #48485a;
+  --cyan: #00e5ff; --cyan-dim: rgba(0,229,255,.08);
+  --amber: #ffab00; --magenta: #d500f9;
+  --font: 'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',monospace;
+  --body: -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+}
+body { font-family: var(--body); background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; overflow-x: hidden; }
+body::before { content: ''; position: fixed; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,.008) 2px, rgba(0,229,255,.008) 4px); pointer-events: none; z-index: 999; }
+.container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; position: relative; }
+header { padding: 1.5rem 0 0; }
+.logo { font-family: var(--font); font-size: 1.25rem; font-weight: 700; letter-spacing: -.03em; text-decoration: none; color: var(--text); display: flex; align-items: center; gap: .5rem; }
+.logo span { color: var(--cyan); }
+.logo .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse 2s ease-in-out infinite; }
+h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
+h1 span { color: var(--cyan); }
+.subtitle { color: var(--text-muted); font-size: 1.1rem; margin-top: .75rem; max-width: 520px; }
+.btn { display: inline-flex; align-items: center; gap: .5rem; padding: .8rem 1.75rem; border-radius: .4rem; font-size: 1rem; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: all .15s; font-family: var(--body); }
+.btn-primary { background: var(--cyan); color: #000; }
+.btn-primary:hover { background: #66f0ff; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,229,255,.2); }
 .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin: 1rem 0; }
-.code { font-family: var(--font); font-size: 0.875rem; }
-.request-item { padding: 1rem; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
-.request-item:hover { background: rgba(99,102,241,0.05); }
+.btn-outline:hover { border-color: var(--cyan); color: var(--cyan); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; padding: 1.5rem; margin: 1rem 0; }
+.code { font-family: var(--font); font-size: .875rem; }
+.request-item { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; display: flex; align-items: center; gap: 1rem; }
+.request-item:hover { background: var(--cyan-dim); }
 .request-item:last-child { border-bottom: none; }
-.badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600; font-family: var(--font); }
-.badge-get { background: rgba(34,197,94,0.15); color: var(--success); }
-.badge-post { background: rgba(99,102,241,0.15); color: var(--accent); }
-.badge-put { background: rgba(245,158,11,0.15); color: var(--warn); }
-.badge-delete { background: rgba(239,68,68,0.15); color: #ef4444; }
-.badge-patch { background: rgba(168,85,247,0.15); color: #a855f7; }
+.badge { display: inline-flex; align-items: center; padding: .15rem .55rem; border-radius: .2rem; font-size: .7rem; font-weight: 700; font-family: var(--font); letter-spacing: .02em; min-width: 4rem; justify-content: center; }
+.badge-get { background: rgba(0,229,255,.12); color: var(--cyan); }
+.badge-post { background: rgba(255,171,0,.12); color: var(--amber); }
+.badge-put { background: rgba(213,0,249,.12); color: var(--magenta); }
+.badge-delete { background: rgba(255,55,55,.12); color: #ff3737; }
+.badge-patch { background: rgba(0,229,255,.12); color: var(--cyan); }
 .meta { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
-.meta time { color: var(--text-muted); font-size: 0.85rem; }
-.path-text { font-family: var(--font); color: var(--text-muted); font-size: 0.85rem; word-break: break-all; }
-.endpoint-url { display: flex; align-items: center; gap: 0.5rem; background: var(--bg); padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid var(--border); margin: 1rem 0; }
-.endpoint-url code { flex: 1; font-family: var(--font); font-size: 0.9rem; color: var(--accent); }
-.copy-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 0.3rem 0.75rem; border-radius: 0.3rem; cursor: pointer; font-size: 0.8rem; }
-.copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+.meta time { color: var(--text-dim); font-size: .8rem; font-family: var(--font); }
+.path-text { font-family: var(--font); color: var(--text-muted); font-size: .8rem; word-break: break-all; }
+.endpoint-url { display: flex; align-items: center; gap: .5rem; background: var(--bg); padding: .75rem 1rem; border-radius: .4rem; border: 1px solid var(--border); margin: 1rem 0; }
+.endpoint-url code { flex: 1; font-family: var(--font); font-size: .85rem; color: var(--cyan); }
+.copy-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); padding: .3rem .75rem; border-radius: .25rem; cursor: pointer; font-size: .75rem; font-family: var(--body); transition: all .1s; }
+.copy-btn:hover { border-color: var(--cyan); color: var(--cyan); }
 .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
-.empty-state p { font-size: 1.1rem; margin-bottom: 0.5rem; }
+.empty-state p { font-size: 1.1rem; margin-bottom: .5rem; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1rem; }
 .section-header h2 { font-size: 1.25rem; }
-.hero { text-align: center; padding: 4rem 0 3rem; }
-.hero h1 { font-size: 2.5rem; }
-.hero p { font-size: 1.1rem; color: var(--text-muted); max-width: 560px; margin: 1rem auto 2rem; }
-.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 2rem 0; }
-.step { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; text-align: center; }
-.step .num { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 0.9rem; margin-bottom: 0.75rem; }
-.step h3 { font-size: 1rem; margin-bottom: 0.5rem; }
-.step p { font-size: 0.9rem; color: var(--text-muted); }
-footer { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem; }
-footer a { color: var(--accent); text-decoration: none; }
-pre { background: var(--bg); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-family: var(--font); font-size: 0.8rem; line-height: 1.5; margin: 0.5rem 0; }
-.header-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.25rem 0; }
-.header-key { color: var(--accent); font-family: var(--font); font-size: 0.8rem; }
-.header-val { color: var(--text-muted); font-family: var(--font); font-size: 0.8rem; word-break: break-all; }
-.back-link { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-muted); text-decoration: none; font-size: 0.9rem; margin-bottom: 1rem; }
-.back-link:hover { color: var(--accent); }
-.tab { color: var(--text-muted); font-size: 0.85rem; }
+.hero { padding: 5rem 0 3rem; position: relative; }
+.hero::before { content: ''; position: absolute; top: -50%; left: -20%; width: 140%; height: 200%; background: radial-gradient(ellipse at 50% 0%, var(--cyan-dim) 0%, transparent 60%); pointer-events: none; }
+.hero > * { position: relative; }
+.hero-tag { display: inline-flex; align-items: center; gap: .4rem; background: var(--cyan-dim); border: 1px solid rgba(0,229,255,.15); padding: .35rem .8rem; border-radius: 2rem; font-size: .75rem; color: var(--cyan); font-family: var(--font); margin-bottom: 1.5rem; letter-spacing: .03em; }
+.hero h1 { margin-bottom: 1rem; }
+.hero p { font-size: 1.1rem; color: var(--text-muted); max-width: 540px; margin: 0 auto 2rem; }
+.hero-actions { display: flex; gap: .75rem; align-items: center; justify-content: center; flex-wrap: wrap; }
+.hero-actions .hint { font-size: .8rem; color: var(--text-dim); }
+.stats-bar { display: flex; justify-content: center; gap: 2rem; margin-top: 2.5rem; flex-wrap: wrap; }
+.stat { text-align: center; }
+.stat-num { font-family: var(--font); font-size: 1.4rem; font-weight: 700; color: var(--cyan); }
+.stat-label { font-size: .75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; margin-top: .15rem; }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 3rem 0; }
+.step { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; padding: 1.5rem; text-align: center; position: relative; overflow: hidden; }
+.step::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--cyan), transparent); opacity: .3; }
+.step .num { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 50%; background: rgba(0,229,255,.1); color: var(--cyan); font-weight: 700; font-size: .85rem; font-family: var(--font); margin-bottom: .75rem; border: 1px solid rgba(0,229,255,.15); }
+.step h3 { font-size: 1rem; margin-bottom: .5rem; }
+.step p { font-size: .85rem; color: var(--text-muted); }
+footer { text-align: center; padding: 3rem 2rem; color: var(--text-dim); font-size: .8rem; border-top: 1px solid var(--border); margin-top: 2rem; }
+footer a { color: var(--text-muted); text-decoration: none; }
+footer a:hover { color: var(--cyan); }
+pre { background: var(--bg); padding: 1.25rem; border-radius: .5rem; overflow-x: auto; font-family: var(--font); font-size: .8rem; line-height: 1.6; margin: .75rem 0; border: 1px solid var(--border); }
+pre .cmt { color: var(--text-dim); }
+pre .cmd { color: var(--cyan); }
+.header-row { display: flex; gap: .5rem; flex-wrap: wrap; margin: .25rem 0; }
+.header-key { color: var(--cyan); font-family: var(--font); font-size: .8rem; }
+.header-val { color: var(--text-muted); font-family: var(--font); font-size: .8rem; word-break: break-all; }
+.back-link { display: inline-flex; align-items: center; gap: .3rem; color: var(--text-dim); text-decoration: none; font-size: .85rem; margin-bottom: 1rem; }
+.back-link:hover { color: var(--cyan); }
+.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin: 2rem 0; }
+.feature { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; padding: 1.5rem; }
+.feature h3 { font-size: .95rem; margin-bottom: .5rem; }
+.feature p { font-size: .85rem; color: var(--text-muted); }
+.feature-icon { font-family: var(--font); font-size: 1.5rem; margin-bottom: .5rem; color: var(--cyan); }
+.gh-link { display: inline-flex; align-items: center; gap: .4rem; color: var(--text-muted); text-decoration: none; font-size: .85rem; }
+.gh-link:hover { color: var(--cyan); }
+@media (max-width: 640px) { .hero { padding: 3rem 0 2rem; } .hero-actions { flex-direction: column; } }
 </style>
 </head>
 <body>
 ${content}
-<footer><div class="container"><a href="/">ReqDump</a> &mdash; dead-simple HTTP request inspector</div></footer>
+<footer><div class="container"><span style="color:var(--text-dim)"><span style="color:var(--cyan)">reqdump</span> — open-source HTTP request inspector &middot; <a href="https://github.com/bakasa/reqdump" target="_blank">GitHub</a></span></div></footer>
 </body>
 </html>`;
 }
 
 function landingPage(): string {
+  const total = (getTotalCaptured.get() as { count: number }).count;
   return html(`
 <header><div class="container">
-  <a href="/" style="text-decoration:none;color:var(--text)"><h1>req<span>dump</span></h1></a>
+  <a href="/" class="logo"><span class="dot"></span> req<span>dump</span></a>
 </div></header>
 <div class="container">
   <div class="hero">
-    <h1>Inspect HTTP requests.<br>No signup. <span style="color:var(--accent)">Free.</span></h1>
-    <p>Create a unique endpoint URL, send requests to it, and inspect them in real-time. Perfect for debugging webhooks, testing API clients, and understanding what your HTTP calls actually send.</p>
-    <form action="/api/bins" method="POST" style="display:inline">
-      <button class="btn btn-primary">Create your endpoint &rarr;</button>
-    </form>
-    <p style="margin-top:1rem;font-size:0.85rem;color:var(--text-muted)">No account needed &middot; Requests expire in 24h</p>
+    <div class="hero-tag"><span style="color:var(--cyan)">&#9679;</span> OPEN SOURCE &middot; ZERO SIGNUP</div>
+    <h1>Inspect HTTP requests.<br>No signup. <span>Free.</span></h1>
+    <p>Create a unique endpoint URL in one click and see every HTTP request sent to it — headers, body, query params, the works. The fastest way to debug webhooks and test API clients.</p>
+    <div class="hero-actions">
+      <form action="/api/bins" method="POST" style="display:inline">
+        <button class="btn btn-primary">Create your endpoint &rarr;</button>
+      </form>
+      <a href="https://github.com/bakasa/reqdump" target="_blank" class="btn btn-outline">GitHub</a>
+    </div>
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-num">${total.toLocaleString()}</div><div class="stat-label">Requests captured</div></div>
+      <div class="stat"><div class="stat-num">0s</div><div class="stat-label">Signup time</div></div>
+      <div class="stat"><div class="stat-num">100%</div><div class="stat-label">Open source</div></div>
+    </div>
   </div>
 
   <div class="steps">
     <div class="step">
       <div class="num">1</div>
       <h3>Create an endpoint</h3>
-      <p>Click the button above and get a unique URL instantly.</p>
+      <p>Click the button above and get a unique URL instantly. No email, no password, no nonsense.</p>
     </div>
     <div class="step">
       <div class="num">2</div>
       <h3>Send requests</h3>
-      <p>Any HTTP method &mdash; GET, POST, PUT, PATCH, DELETE &mdash; with any headers or body.</p>
+      <p>Any HTTP method &mdash; GET, POST, PUT, PATCH, DELETE &mdash; with any headers, body, or query params.</p>
     </div>
     <div class="step">
       <div class="num">3</div>
-      <h3>Inspect &amp; debug</h3>
-      <p>See full request details: method, path, headers, query params, and body.</p>
+      <h3>Inspect everything</h3>
+      <p>See method, path, headers, query string, and body. Share the permalink to debug with your team.</p>
+    </div>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">&#x25C8;</div>
+      <h3>Zero friction</h3>
+      <p>No signup, no rate limits, no "upgrade to pro." Click one button and you're already debugging.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#x2699;</div>
+      <h3>Self-hostable</h3>
+      <p>Open source under MIT. Deploy your own instance on Railway in under 2 minutes. Full data control.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#x2194;</div>
+      <h3>Any method, any format</h3>
+      <p>GET, POST, PUT, PATCH, DELETE — JSON, form data, text, binary. Whatever you throw at it.</p>
     </div>
   </div>
 
   <div class="card">
-    <h3 style="margin-bottom:0.75rem">Quick start</h3>
-    <pre># Create a dump endpoint
-curl -X POST ${BASE_URL}/api/bins
+    <h3 style="margin-bottom:.75rem">Quick start</h3>
+    <pre><span class="cmt"># Create a dump endpoint</span>
+<span class="cmd">curl -X POST ${BASE_URL}/api/bins</span>
 
-# Send a test request
-curl -X POST ${BASE_URL}/&lt;your-bin-id&gt;/test \\
-  -H "Content-Type: application/json" \\
+<span class="cmt"># Send a test request</span>
+<span class="cmd">curl -X POST ${BASE_URL}/&lt;your-bin-id&gt;/test \</span>
+  -H "Content-Type: application/json" \
   -d '{"hello":"world"}'
 
-# Open the dashboard in your browser
-open ${BASE_URL}/bin/&lt;your-bin-id&gt;</pre>
+<span class="cmt"># Open the dashboard</span>
+<span class="cmd">open ${BASE_URL}/bin/&lt;your-bin-id&gt;</span></pre>
+  </div>
+
+  <div class="card" style="text-align:center;border-style:dashed;border-color:var(--border);background:transparent">
+    <p style="color:var(--text-muted);font-size:.9rem">Built with <a href="https://hono.dev" style="color:var(--cyan);text-decoration:none">Hono</a> + better-sqlite3 &middot; <a href="https://github.com/bakasa/reqdump" style="color:var(--cyan);text-decoration:none">contribute on GitHub</a></p>
   </div>
 </div>
 `);
@@ -190,12 +266,14 @@ function binPage(binId: string, requests: Array<Record<string, unknown>>): strin
         : (r.body as string).slice(0, 200))
       : '';
     return `<div class="request-item" onclick="window.location='/bin/${binId}/req/${r.id}'">
-      <div class="meta">
         <span class="badge ${methodClass}">${r.method}</span>
-        <time>${r.timestamp}</time>
-        <span class="path-text">${r.path}</span>
-      </div>
-      ${bodyPreview ? `<div class="code" style="margin-top:0.5rem;color:var(--text-muted);font-size:0.8rem">${escapeHtml(bodyPreview)}</div>` : ''}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+            <time>${r.timestamp}</time>
+            <span class="path-text">${r.path}</span>
+          </div>
+          ${bodyPreview ? `<div class="code" style="margin-top:.35rem;color:var(--text-dim);font-size:.75rem">${escapeHtml(bodyPreview)}</div>` : ''}
+        </div>
     </div>`;
   }).join('');
 
@@ -203,37 +281,37 @@ function binPage(binId: string, requests: Array<Record<string, unknown>>): strin
 
   return html(`
 <header><div class="container">
-  <a href="/" style="text-decoration:none;color:var(--text)"><h1>req<span>dump</span></h1></a>
+  <a href="/" class="logo"><span class="dot"></span> req<span>dump</span></a>
 </div></header>
 <div class="container">
   <div class="section-header">
-    <h2>Bin <span style="color:var(--accent)">${binId}</span></h2>
+    <h2>Bin <span style="color:var(--cyan)">${binId}</span></h2>
     <form action="/api/bins" method="POST" style="display:inline">
-      <button class="btn btn-outline" style="font-size:0.85rem;padding:0.5rem 1rem">New bin</button>
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .85rem">New bin</button>
     </form>
   </div>
 
   <div class="endpoint-url">
-    <span style="font-size:0.85rem;color:var(--text-muted)">Endpoint:</span>
+    <span style="font-size:.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em">Endpoint</span>
     <code>${endpointUrl}</code>
     <button class="copy-btn" onclick="navigator.clipboard.writeText('${endpointUrl}')">Copy</button>
   </div>
 
-  <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
-    Send any HTTP request to <strong>${endpointUrl}/your-path</strong> to capture it. Requests expire after 24 hours.
+  <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:1rem">
+    Send any HTTP request to <strong style="color:var(--text)">${endpointUrl}/your-path</strong> to capture it. Requests expire after 24 hours.
   </p>
 
   ${requests.length === 0 ? `
   <div class="empty-state">
     <p>No requests yet</p>
-    <p style="font-size:0.9rem;margin-top:0.5rem">Send a request to your endpoint and it will appear here.</p>
+    <p style="font-size:.9rem;margin-top:.5rem">Send a request to your endpoint and it will appear here.</p>
     <pre style="margin-top:1rem;display:inline-block;text-align:left">curl -X POST ${endpointUrl}/test -d "hello world"</pre>
   </div>
   ` : `
   <div class="card" style="padding:0;overflow:hidden">
     ${rows}
   </div>
-  <p style="font-size:0.85rem;color:var(--text-muted);margin-top:0.75rem">${requests.length} request${requests.length > 1 ? 's' : ''} captured</p>
+  <p style="font-size:.8rem;color:var(--text-dim);margin-top:.75rem">${requests.length} request${requests.length > 1 ? 's' : ''} captured &middot; <a href="/bin/${binId}" style="color:var(--cyan);text-decoration:none">refresh</a></p>
   `}
 </div>
 `);
@@ -260,7 +338,7 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
 
   return html(`
 <header><div class="container">
-  <a href="/" style="text-decoration:none;color:var(--text)"><h1>req<span>dump</span></h1></a>
+  <a href="/" class="logo"><span class="dot"></span> req<span>dump</span></a>
 </div></header>
 <div class="container">
   <a href="/bin/${binId}" class="back-link">&larr; Back to bin</a>
@@ -272,15 +350,16 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
       <time>${req.timestamp}</time>
     </div>
 
-    <h3 style="font-size:1rem;margin-bottom:0.5rem">Headers</h3>
-    <div style="background:var(--bg);padding:1rem;border-radius:0.5rem;border:1px solid var(--border);margin-bottom:1rem">
+    <h3 style="font-size:.9rem;margin-bottom:.5rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">Headers</h3>
+    <div style="background:var(--bg);padding:1rem;border-radius:.4rem;border:1px solid var(--border);margin-bottom:1rem">
       ${headerRows}
     </div>
 
-    ${req.query ? `<h3 style="font-size:1rem;margin-bottom:0.5rem">Query Parameters</h3><pre>${escapeHtml(req.query as string)}</pre>` : ''}
+    ${req.query ? `<h3 style="font-size:.9rem;margin-bottom:.5rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">Query Parameters</h3><pre>${escapeHtml(req.query as string)}</pre>` : ''}
 
-    ${bodyContent ? `<h3 style="font-size:1rem;margin-bottom:0.5rem;margin-top:1rem">Body</h3><pre>${escapeHtml(bodyContent)}</pre>` : ''}
+    ${bodyContent ? `<h3 style="font-size:.9rem;margin-bottom:.5rem;margin-top:1rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">Body</h3><pre>${escapeHtml(bodyContent)}</pre>` : ''}
   </div>
+  <button class="copy-btn" onclick="navigator.clipboard.writeText(window.location.href)" style="margin-top:.5rem">Copy link to this request</button>
 </div>
 `);
 }
@@ -362,10 +441,12 @@ app.all('/:id/*', async c => {
 
   insertRequest.run(binId, method, path, headers, query, body, bodyType, remoteAddr);
   updateBinTime.run(binId);
+  totalCaptured = (getTotalCaptured.get() as { count: number }).count;
 
   const accept = c.req.header('Accept') || '';
+  const dashboardUrl = `${BASE_URL}/bin/${binId}`;
   if (accept.includes('application/json')) {
-    return c.json({
+    return new Response(JSON.stringify({
       ok: true,
       bin_id: binId,
       method,
@@ -374,11 +455,22 @@ app.all('/:id/*', async c => {
       query,
       body: body?.toString('utf-8') || null,
       body_type: bodyType,
-      dashboard: `${BASE_URL}/bin/${binId}`
+      dashboard: dashboardUrl
+    }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-ReqDump': 'true',
+        'X-ReqDump-Link': dashboardUrl
+      }
     });
   }
 
-  return c.text(`Request captured.\nDashboard: ${BASE_URL}/bin/${binId}\n`);
+  return new Response(`Request captured.\nDashboard: ${dashboardUrl}\n`, {
+    headers: {
+      'X-ReqDump': 'true',
+      'X-ReqDump-Link': dashboardUrl
+    }
+  });
 });
 
 app.notFound(c => htmlResponse(errorPage('Not found'), 404));
