@@ -2,6 +2,7 @@
   "name": "reqdump",
   "version": "0.1.0",
   "description": "Dead-simple HTTP request inspector / webhook debugger",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
