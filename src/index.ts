@@ -166,7 +166,40 @@ pre .cmd { color: var(--cyan); }
 .feature-icon { font-family: var(--font); font-size: 1.5rem; margin-bottom: .5rem; color: var(--cyan); }
 .gh-link { display: inline-flex; align-items: center; gap: .4rem; color: var(--text-muted); text-decoration: none; font-size: .85rem; }
 .gh-link:hover { color: var(--cyan); }
-@media (max-width: 640px) { .hero { padding: 3rem 0 2rem; } .hero-actions { flex-direction: column; } }
+.replay-section { margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1.5rem; }
+.replay-toggle { width: 100%; padding: .75rem 1rem; background: var(--surface); border: 1px dashed var(--border); border-radius: .5rem; color: var(--cyan); font-family: var(--font); font-size: .85rem; cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: .5rem; justify-content: center; }
+.replay-toggle:hover { border-color: var(--cyan); background: var(--cyan-dim); }
+.replay-form { margin-top: 1rem; display: none; }
+.replay-form.open { display: block; animation: fadeIn .2s ease-out; }
+.replay-form label { display: block; font-size: .8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .35rem; margin-top: 1rem; }
+.replay-form label:first-child { margin-top: 0; }
+.replay-form input, .replay-form select, .replay-form textarea { width: 100%; padding: .65rem .85rem; background: var(--bg); border: 1px solid var(--border); border-radius: .4rem; color: var(--text); font-family: var(--font); font-size: .85rem; outline: none; transition: border .15s; }
+.replay-form input:focus, .replay-form select:focus, .replay-form textarea:focus { border-color: var(--cyan); }
+.replay-form textarea { min-height: 80px; resize: vertical; font-size: .8rem; line-height: 1.5; }
+.replay-form .form-row { display: flex; gap: .75rem; align-items: end; }
+.replay-form .form-row > * { flex: 1; }
+.replay-btn { padding: .65rem 1.5rem; background: var(--cyan); color: #000; border: none; border-radius: .4rem; font-weight: 600; font-size: .85rem; cursor: pointer; transition: all .15s; font-family: var(--body); white-space: nowrap; }
+.replay-btn:hover { background: #66f0ff; transform: translateY(-1px); }
+.replay-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.replay-response { margin-top: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: .5rem; overflow: hidden; display: none; }
+.replay-response.open { display: block; animation: fadeIn .2s ease-out; }
+.replay-response .resp-header { display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
+.replay-response .resp-status { font-family: var(--font); font-size: .85rem; font-weight: 700; padding: .15rem .5rem; border-radius: .2rem; }
+.replay-response .resp-status-2xx { background: rgba(0,200,83,.12); color: #00c853; }
+.replay-response .resp-status-3xx { background: rgba(255,171,0,.12); color: var(--amber); }
+.replay-response .resp-status-4xx { background: rgba(255,55,55,.12); color: #ff3737; }
+.replay-response .resp-status-5xx { background: rgba(255,55,55,.12); color: #ff3737; }
+.replay-response .resp-elapsed { font-family: var(--font); font-size: .75rem; color: var(--text-dim); margin-left: auto; }
+.replay-response .resp-body { padding: 0; }
+.replay-response .resp-body pre { margin: 0; border: none; border-radius: 0; max-height: 400px; }
+.replay-response .resp-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.replay-response .resp-tab { padding: .5rem 1rem; font-size: .8rem; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; font-family: var(--body); background: none; }
+.replay-response .resp-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+.replay-response .resp-tab-content { display: none; }
+.replay-response .resp-tab-content.active { display: block; }
+.replay-error { margin-top: .5rem; padding: .75rem 1rem; background: rgba(255,55,55,.08); border: 1px solid rgba(255,55,55,.2); border-radius: .4rem; color: #ff5555; font-family: var(--font); font-size: .85rem; display: none; }
+.replay-error.show { display: block; }
+@media (max-width: 640px) { .hero { padding: 3rem 0 2rem; } .hero-actions { flex-direction: column; } .replay-form .form-row { flex-direction: column; } }
 </style>
 </head>
 <body>
@@ -356,6 +389,9 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
   const methodClass = `badge-${(req.method as string).toLowerCase()}`;
   const shareText = encodeURIComponent(`Inspected a ${req.method} request on @reqdump — open source webhook debugger, no signup needed`);
   const shareUrl = encodeURIComponent(`${BASE_URL}/bin/${binId}/req/${req.id}`);
+  const escapedBody = escapeHtml(bodyContent);
+  const headersJson = escapeHtml(JSON.stringify(headers, null, 2));
+  const method = req.method as string;
 
   return html(`
 <header><div class="container">
@@ -366,7 +402,7 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
 
   <div class="card">
     <div class="meta" style="margin-bottom:1rem">
-      <span class="badge ${methodClass}">${req.method}</span>
+      <span class="badge ${methodClass}">${method}</span>
       <span class="path-text">${req.path}</span>
       <time>${req.timestamp}</time>
     </div>
@@ -378,7 +414,7 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
 
     ${req.query ? `<h3 style="font-size:.9rem;margin-bottom:.5rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">Query Parameters</h3><pre>${escapeHtml(req.query as string)}</pre>` : ''}
 
-    ${bodyContent ? `<h3 style="font-size:.9rem;margin-bottom:.5rem;margin-top:1rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">Body</h3><pre>${escapeHtml(bodyContent)}</pre>` : ''}
+    ${bodyContent ? `<h3 style="font-size:.9rem;margin-bottom:.5rem;margin-top:1rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">Body</h3><pre>${escapedBody}</pre>` : ''}
   </div>
   <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
     <button class="copy-btn" onclick="navigator.clipboard.writeText(window.location.href)">Copy link to this request</button>
@@ -387,7 +423,122 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
       Share
     </a>
   </div>
+
+  <div class="replay-section">
+    <button class="replay-toggle" onclick="toggleReplay()">&#x25B6; Replay this request</button>
+    <div class="replay-form" id="replayForm">
+      <div class="form-row">
+        <div>
+          <label>Target URL</label>
+          <input type="url" id="replayUrl" placeholder="http://localhost:8080/webhook" value="">
+        </div>
+        <div style="flex:0 0 auto">
+          <label>Method</label>
+          <select id="replayMethod">
+            <option value="GET" ${method === 'GET' ? 'selected' : ''}>GET</option>
+            <option value="POST" ${method === 'POST' ? 'selected' : ''}>POST</option>
+            <option value="PUT" ${method === 'PUT' ? 'selected' : ''}>PUT</option>
+            <option value="PATCH" ${method === 'PATCH' ? 'selected' : ''}>PATCH</option>
+            <option value="DELETE" ${method === 'DELETE' ? 'selected' : ''}>DELETE</option>
+          </select>
+        </div>
+      </div>
+      <label>Headers (JSON)</label>
+      <textarea id="replayHeaders" rows="4">${headersJson}</textarea>
+      ${bodyContent ? `<label>Body</label><textarea id="replayBody" rows="5">${escapedBody}</textarea>` : '<input type="hidden" id="replayBody" value="">'}
+      <div style="display:flex;gap:.5rem;margin-top:1rem">
+        <button class="replay-btn" id="replaySendBtn" onclick="sendReplay()">Send</button>
+        <span id="replaySpinner" style="display:none;color:var(--text-dim);font-size:.85rem;align-self:center">Sending...</span>
+      </div>
+      <div class="replay-error" id="replayError"></div>
+      <div class="replay-response" id="replayResponse">
+        <div class="resp-header">
+          <span class="resp-status" id="respStatusBadge"></span>
+          <span id="respStatusText" style="font-size:.85rem;color:var(--text-muted)"></span>
+          <span class="resp-elapsed" id="respElapsed"></span>
+        </div>
+        <div class="resp-tabs">
+          <button class="resp-tab active" data-tab="body" onclick="switchRespTab(this, 'body')">Body</button>
+          <button class="resp-tab" data-tab="headers" onclick="switchRespTab(this, 'headers')">Headers</button>
+        </div>
+        <div class="resp-tab-content active" id="respBodyContent"><pre></pre></div>
+        <div class="resp-tab-content" id="respHeadersContent"><pre></pre></div>
+      </div>
+    </div>
+  </div>
 </div>
+
+<script>
+function toggleReplay() {
+  const form = document.getElementById('replayForm');
+  form.classList.toggle('open');
+}
+
+async function sendReplay() {
+  const btn = document.getElementById('replaySendBtn');
+  const spinner = document.getElementById('replaySpinner');
+  const error = document.getElementById('replayError');
+  const resp = document.getElementById('replayResponse');
+  const url = document.getElementById('replayUrl').value.trim();
+
+  if (!url) {
+    error.textContent = 'Target URL is required';
+    error.classList.add('show');
+    return;
+  }
+  error.classList.remove('show');
+  error.textContent = '';
+
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
+  resp.classList.remove('open');
+
+  try {
+    const r = await fetch('/api/replay/${binId}/${req.id}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target_url: url,
+        method: document.getElementById('replayMethod').value,
+        headers: document.getElementById('replayHeaders').value,
+        body: document.getElementById('replayBody')?.value || undefined
+      })
+    });
+    const data = await r.json();
+    if (data.error) { throw new Error(data.error); }
+
+    document.getElementById('respStatusBadge').textContent = data.status;
+    const statusClass = data.status < 300 ? 'resp-status-2xx' : data.status < 400 ? 'resp-status-3xx' : data.status < 500 ? 'resp-status-4xx' : 'resp-status-5xx';
+    document.getElementById('respStatusBadge').className = 'resp-status ' + statusClass;
+    document.getElementById('respStatusText').textContent = data.status_text;
+    document.getElementById('respElapsed').textContent = data.elapsed_ms + 'ms';
+
+    const body = typeof data.body === 'string' ? data.body : JSON.stringify(data.body, null, 2);
+    const formattedBody = data.headers && data.headers['content-type'] && data.headers['content-type'].includes('json')
+      ? (() => { try { return JSON.stringify(JSON.parse(body), null, 2); } catch(e) { return body; } })()
+      : body;
+
+    document.querySelector('#respBodyContent pre').textContent = formattedBody;
+    const hJson = JSON.stringify(data.headers, null, 2);
+    document.querySelector('#respHeadersContent pre').textContent = hJson;
+
+    resp.classList.add('open');
+  } catch (e) {
+    error.textContent = e.message;
+    error.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+function switchRespTab(tab, name) {
+  document.querySelectorAll('.resp-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.resp-tab-content').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('resp' + name.charAt(0).toUpperCase() + name.slice(1) + 'Content').classList.add('active');
+}
+</script>
 `);
 }
 
@@ -400,6 +551,21 @@ function escapeHtml(s: string): string {
 }
 
 const app = new Hono();
+
+app.use('/api/*', async (c, next) => {
+  await next();
+  c.res.headers.set('Access-Control-Allow-Origin', '*');
+  c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  c.res.headers.set('Access-Control-Allow-Headers', '*');
+});
+
+app.options('/api/*', c => new Response(null, {
+  headers: {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': '*',
+  }
+}));
 
 app.get('/robots.txt', c => new Response('User-agent: *\nAllow: /\n', {
   headers: { 'Content-Type': 'text/plain' }
@@ -467,6 +633,62 @@ app.get('/bin/:id/req/:reqId', c => {
   const req = getRequest.get(parseInt(reqId, 10), id) as Record<string, unknown> | undefined;
   if (!req) return htmlResponse(errorPage('Request not found'), 404);
   return htmlResponse(requestDetailPage(id, formatRow(req)));
+});
+
+app.post('/api/replay/:binId/:reqId', async c => {
+  const { binId, reqId } = c.req.param();
+  const bin = getBin.get(binId);
+  if (!bin) return c.json({ error: 'bin not found' }, 404);
+
+  const request = getRequest.get(parseInt(reqId, 10), binId) as Record<string, unknown> | undefined;
+  if (!request) return c.json({ error: 'request not found' }, 404);
+
+  let body: Record<string, unknown>;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'invalid JSON body' }, 400); }
+
+  const targetUrl = (body.target_url as string || '').trim();
+  if (!targetUrl) return c.json({ error: 'target_url is required' }, 400);
+
+  const replayMethod = (body.method as string) || (request.method as string);
+  let replayHeaders: Record<string, string>;
+  try {
+    replayHeaders = typeof body.headers === 'string' ? JSON.parse(body.headers) : (body.headers as Record<string, string> || JSON.parse(request.headers as string));
+  } catch { return c.json({ error: 'invalid headers JSON' }, 400); }
+
+  delete replayHeaders['host'];
+  delete replayHeaders['Host'];
+  delete replayHeaders['content-length'];
+  delete replayHeaders['Content-Length'];
+  delete replayHeaders['content-encoding'];
+  delete replayHeaders['Content-Encoding'];
+
+  const replayBody = body.body !== undefined ? (typeof body.body === 'string' ? body.body : String(body.body)) : (request.body as string || undefined);
+
+  try {
+    const startTime = Date.now();
+    const response = await fetch(targetUrl, {
+      method: replayMethod,
+      headers: replayHeaders,
+      body: ['GET', 'HEAD'].includes(replayMethod.toUpperCase()) ? undefined : (replayBody || undefined),
+    });
+    const elapsed = Date.now() - startTime;
+
+    const respHeaders: Record<string, string> = {};
+    response.headers.forEach((v, k) => { respHeaders[k] = v; });
+
+    const respBody = await response.text();
+
+    return c.json({
+      status: response.status,
+      status_text: response.statusText,
+      headers: respHeaders,
+      body: respBody,
+      elapsed_ms: elapsed,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 502);
+  }
 });
 
 app.all('/:id/*', async c => {

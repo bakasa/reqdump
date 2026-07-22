@@ -28,9 +28,11 @@ open https://reqdump-production.up.railway.app/bin/<your-bin-id>
 - **Instant endpoints**: Click a button, get a URL. No account needed.
 - **All methods**: Capture GET, POST, PUT, PATCH, DELETE requests
 - **Full inspection**: View method, path, headers, query params, body, and timestamp
+- **Request replay**: Replay captured requests against any target URL — perfect for testing webhooks against your local dev server
 - **Clean dashboard**: Web UI to browse captured requests
 - **JSON API**: Integrate with your tools via REST API
 - **Auto-expiry**: Requests expire after 24 hours
+- **CORS enabled**: API endpoints support cross-origin requests from browser-based tools
 - **Viral headers**: Every response includes `X-ReqDump` and `X-ReqDump-Link` for easy sharing
 
 ## Deploy
@@ -57,13 +59,32 @@ docker run -p 3000:3000 -e BASE_URL=http://localhost:3000 ghcr.io/bakasa/reqdump
 ## API
 
 ```
-POST /api/bins          → Create a new dump endpoint
-GET  /api/bins/:id      → List all captured requests (JSON)
-GET  /bin/:id           → Dashboard HTML
-GET  /bin/:id/req/:id   → Single request detail (HTML)
-ANY  /:id/*             → Capture a request
-GET  /health            → Health check
+POST /api/bins              → Create a new dump endpoint
+GET  /api/bins/:id          → List all captured requests (JSON)
+POST /api/replay/:binId/:id → Replay a captured request against a target URL
+GET  /bin/:id               → Dashboard HTML
+GET  /bin/:id/req/:id       → Single request detail (HTML)
+ANY  /:id/*                 → Capture a request
+GET  /health                → Health check
 ```
+
+### Replay API
+
+Replay a captured request against any target URL — ideal for testing webhooks against your local dev server.
+
+```
+POST /api/replay/:binId/:reqId
+Content-Type: application/json
+
+{
+  "target_url": "http://localhost:8080/webhook",
+  "method": "POST",              // optional, defaults to original
+  "headers": "{...}",            // optional JSON string, defaults to original
+  "body": "{\\"hello\\":\\"world\\"}"  // optional, defaults to original
+}
+```
+
+Returns the response status, headers, body, and elapsed time.
 
 ## Use Cases
 
