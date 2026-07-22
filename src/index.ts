@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import Database from 'better-sqlite3';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHmac, timingSafeEqual } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -50,6 +50,7 @@ const getRequests = db.prepare('SELECT * FROM requests WHERE bin_id = ? ORDER BY
 const getRequest = db.prepare('SELECT * FROM requests WHERE id = ? AND bin_id = ?');
 const updateBinTime = db.prepare('UPDATE bins SET last_request_at = datetime(\'now\') WHERE id = ?');
 const deleteOldBins = db.prepare("DELETE FROM bins WHERE created_at < datetime('now', '-7 days') AND id NOT IN (SELECT DISTINCT bin_id FROM requests WHERE timestamp > datetime('now', '-1 day'))");
+const getPopularBins = db.prepare('SELECT b.id, b.created_at, b.last_request_at, COUNT(r.id) as request_count FROM bins b LEFT JOIN requests r ON r.bin_id = b.id GROUP BY b.id HAVING request_count > 0 ORDER BY request_count DESC LIMIT ?');
 
 function genId(): string {
   return randomBytes(6).toString('base64url');
@@ -199,31 +200,45 @@ pre .cmd { color: var(--cyan); }
 .replay-response .resp-tab-content.active { display: block; }
 .replay-error { margin-top: .5rem; padding: .75rem 1rem; background: rgba(255,55,55,.08); border: 1px solid rgba(255,55,55,.2); border-radius: .4rem; color: #ff5555; font-family: var(--font); font-size: .85rem; display: none; }
 .replay-error.show { display: block; }
+.popular-bins { margin: 2rem 0; }
+.popular-bins h2 { font-size: 1rem; color: var(--text-muted); margin-bottom: .75rem; text-transform: uppercase; letter-spacing: .06em; }
+.popular-bins table { width: 100%; border-collapse: collapse; }
+.popular-bins th { text-align: left; font-size: .7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; padding: .5rem .75rem; border-bottom: 1px solid var(--border); font-weight: 500; }
+.popular-bins td { padding: .6rem .75rem; border-bottom: 1px solid var(--border); font-size: .85rem; }
+.popular-bins tr:last-child td { border-bottom: none; }
+.popular-bins tr:hover td { background: var(--cyan-dim); }
+.popular-bins .bin-link { color: var(--cyan); text-decoration: none; font-family: var(--font); font-size: .8rem; }
+.popular-bins .bin-link:hover { text-decoration: underline; }
+.popular-bins .count { font-family: var(--font); font-weight: 700; color: var(--text); }
+.popular-bins .ts { font-size: .75rem; color: var(--text-dim); font-family: var(--font); }
+.popular-bins .empty { text-align: center; padding: 1.5rem; color: var(--text-dim); font-size: .85rem; }
 @media (max-width: 640px) { .hero { padding: 3rem 0 2rem; } .hero-actions { flex-direction: column; } .replay-form .form-row { flex-direction: column; } }
 </style>
 </head>
 <body>
 ${content}
-<footer><div class="container"><span style="color:var(--text-dim)"><span style="color:var(--cyan)">reqdump</span> — open-source HTTP request inspector &middot; <a href="https://github.com/bakasa/reqdump" target="_blank">GitHub</a></span></div></footer>
+<footer><div class="container"><span style="color:var(--text-dim)"><span style="color:var(--cyan)">reqdump</span> — <a href="/stripe" style="color:var(--cyan)">Stripe webhook debugger</a> &middot; open-source HTTP request inspector &middot; <a href="https://github.com/bakasa/reqdump" target="_blank">GitHub</a> &middot; <a href="https://railway.app/template/reqdump" target="_blank" style="color:var(--cyan)">Deploy on Railway</a></span></div></footer>
 </body>
 </html>`;
 }
 
 function landingPage(): string {
   const total = (getTotalCaptured.get() as { count: number }).count;
+  const popularBins = getPopularBins.all(10) as Array<Record<string, unknown>>;
   return html(`
 <header><div class="container">
   <a href="/" class="logo"><span class="dot"></span> req<span>dump</span></a>
 </div></header>
 <div class="container">
   <div class="hero">
-    <div class="hero-tag"><span style="color:var(--cyan)">&#9679;</span> OPEN SOURCE &middot; ZERO SIGNUP</div>
-    <h1>Inspect HTTP requests.<br>No signup. <span>Free.</span></h1>
-    <p>Create a unique endpoint URL in one click and see every HTTP request sent to it — headers, body, query params, the works. The fastest way to debug webhooks and test API clients.</p>
+    <div class="hero-tag"><span style="color:var(--cyan)">&#9679;</span> STRIPE WEBHOOK DEBUGGER &middot; OPEN SOURCE &middot; ZERO SIGNUP</div>
+    <h1>Debug Stripe webhooks.<br>No signup. <span>Free.</span></h1>
+    <p>Capture, inspect, and verify Stripe webhook events — signatures, payloads, headers, the works. The fastest way to debug Stripe webhooks and test your handling code.</p>
     <div class="hero-actions">
       <form action="/api/bins" method="POST" style="display:inline">
         <button class="btn btn-primary">Create your endpoint &rarr;</button>
       </form>
+      <a href="/stripe" class="btn btn-outline">Stripe tool</a>
       <a href="https://github.com/bakasa/reqdump" target="_blank" class="btn btn-outline">GitHub</a>
     </div>
     <div class="stats-bar">
@@ -253,34 +268,54 @@ function landingPage(): string {
 
   <div class="features">
     <div class="feature">
-      <div class="feature-icon">&#x25C8;</div>
-      <h3>Zero friction</h3>
-      <p>No signup, no rate limits, no "upgrade to pro." Click one button and you're already debugging.</p>
+      <div class="feature-icon">&#x2713;</div>
+      <h3>Stripe signature verification</h3>
+      <p>Paste any Stripe webhook payload and verify its signature instantly. No SDK, no setup — just paste and check.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon">&#x2699;</div>
-      <h3>Self-hostable</h3>
-      <p>Open source under MIT. Deploy your own instance on Railway in under 2 minutes. Full data control.</p>
+      <div class="feature-icon">&#x25C8;</div>
+      <h3>Capture live Stripe events</h3>
+      <p>Point your Stripe webhook endpoint to reqdump and inspect every event — charge.succeeded, payment_intent.succeeded, and more.</p>
     </div>
     <div class="feature">
       <div class="feature-icon">&#x2194;</div>
-      <h3>Any method, any format</h3>
-      <p>GET, POST, PUT, PATCH, DELETE — JSON, form data, text, binary. Whatever you throw at it.</p>
+      <h3>Replay &amp; debug</h3>
+      <p>Replay captured Stripe webhooks against your local dev server. Test your handling logic without triggering real events.</p>
     </div>
   </div>
 
+  ${popularBins.length > 0 ? `
+  <div class="popular-bins">
+    <h2>Popular endpoints</h2>
+    <table>
+      <thead><tr><th>Bin ID</th><th>Requests</th><th>Last request</th></tr></thead>
+      <tbody>${popularBins.map(b => `
+        <tr>
+          <td><a href="/bin/${b.id}" class="bin-link">${b.id}</a></td>
+          <td><span class="count">${b.request_count}</span></td>
+          <td><span class="ts">${b.last_request_at || '—'}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>` : ''}
+
   <div class="card">
-    <h3 style="margin-bottom:.75rem">Quick start</h3>
-    <pre><span class="cmt"># Create a dump endpoint</span>
+    <h3 style="margin-bottom:.75rem">Quick start — Capture a Stripe webhook</h3>
+    <pre><span class="cmt"># 1. Create a dump endpoint</span>
 <span class="cmd">curl -X POST ${BASE_URL}/api/bins</span>
+<span class="cmt"># {"bin_id":"abc123","endpoint":"${BASE_URL}/abc123",...}</span>
 
-<span class="cmt"># Send a test request</span>
-<span class="cmd">curl -X POST ${BASE_URL}/&lt;your-bin-id&gt;/test \</span>
-  -H "Content-Type: application/json" \
-  -d '{"hello":"world"}'
+<span class="cmt"># 2. Set ${BASE_URL}/abc123/stripe as your</span>
+<span class="cmt">#    Stripe webhook URL in the dashboard</span>
 
-<span class="cmt"># Open the dashboard</span>
-<span class="cmd">open ${BASE_URL}/bin/&lt;your-bin-id&gt;</span></pre>
+<span class="cmt"># 3. Trigger a test event from Stripe CLI</span>
+<span class="cmd">stripe trigger payment_intent.succeeded \</span>
+  --forward-to ${BASE_URL}/abc123/stripe
+
+<span class="cmt"># 4. Open dashboard to inspect</span>
+<span class="cmd">open ${BASE_URL}/bin/abc123</span>
+
+<span class="cmt"># 5. Verify signature at /stripe</span></pre>
   </div>
 
   <div class="card" style="text-align:center;border-style:dashed;border-color:var(--border);background:transparent">
@@ -342,6 +377,11 @@ function binPage(binId: string, requests: Array<Record<string, unknown>>): strin
     Send any HTTP request to <strong style="color:var(--text)">${endpointUrl}/your-path</strong> to capture it. Requests expire after 24 hours.
   </p>
 
+  <div class="card" style="margin-bottom:1rem;padding:1rem">
+    <div style="font-size:.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">Embed badge</div>
+    <pre style="margin:0;font-size:.75rem">[![reqdump](${BASE_URL}/api/badge/${binId})](${BASE_URL}/bin/${binId})<button class="copy-btn" style="float:right" onclick="navigator.clipboard.writeText('[![reqdump](${BASE_URL}/api/badge/${binId})](${BASE_URL}/bin/${binId})');this.textContent='Copied!'">Copy</button></pre>
+  </div>
+
   <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
     <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent('Debugging webhooks with reqdump — open source HTTP request inspector, no signup')}&url=${encodeURIComponent(BASE_URL + '/bin/' + binId)}" target="_blank" class="btn btn-outline" style="font-size:.8rem;padding:.35rem .85rem;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg>
@@ -369,6 +409,23 @@ function binPage(binId: string, requests: Array<Record<string, unknown>>): strin
 `);
 }
 
+function reconstructCurl(req: Record<string, unknown>, binId: string): string {
+  const headers: Record<string, string> = JSON.parse(req.headers as string);
+  const endpoint = `${BASE_URL}/${binId}${req.path === '/' ? '' : req.path}`;
+  let cmd = `curl -X ${req.method} '${endpoint}'`;
+  const skipHeaders = new Set(['host', 'content-length', 'content-encoding', 'accept-encoding', 'connection']);
+  for (const [k, v] of Object.entries(headers)) {
+    if (skipHeaders.has(k.toLowerCase())) continue;
+    cmd += ` \\\n  -H '${k}: ${v.replace(/'/g, "\\'")}'`;
+  }
+  if (req.query) cmd += ` \\\n  --data-urlencode '${(req.query as string).replace(/'/g, "\\'")}'`;
+  if (req.body) {
+    const body = req.body as string;
+    cmd += ` \\\n  -d '${body.replace(/'/g, "\\'")}'`;
+  }
+  return cmd;
+}
+
 function requestDetailPage(binId: string, req: Record<string, unknown>): string {
   const headers: Record<string, string> = JSON.parse(req.headers as string);
   const headerRows = Object.entries(headers).map(([k, v]) =>
@@ -392,6 +449,7 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
   const escapedBody = escapeHtml(bodyContent);
   const headersJson = escapeHtml(JSON.stringify(headers, null, 2));
   const method = req.method as string;
+  const curlCmd = reconstructCurl(req, binId);
 
   return html(`
 <header><div class="container">
@@ -416,6 +474,11 @@ function requestDetailPage(binId: string, req: Record<string, unknown>): string 
 
     ${bodyContent ? `<h3 style="font-size:.9rem;margin-bottom:.5rem;margin-top:1rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">Body</h3><pre>${escapedBody}</pre>` : ''}
   </div>
+  <div class="card" style="margin-top:1rem">
+    <h3 style="font-size:.9rem;margin-bottom:.5rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em">cURL</h3>
+    <pre style="position:relative">${escapeHtml(curlCmd)}<button class="copy-btn" style="position:absolute;top:.5rem;right:.5rem" onclick="navigator.clipboard.writeText(document.querySelector('.curl-cmd').textContent);this.textContent='Copied!'">Copy</button><span class="curl-cmd" style="display:none">${escapeHtml(curlCmd)}</span></pre>
+  </div>
+
   <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
     <button class="copy-btn" onclick="navigator.clipboard.writeText(window.location.href)">Copy link to this request</button>
     <a href="https://twitter.com/intent/tweet?text=${shareText}&url=${shareUrl}" target="_blank" class="btn btn-outline" style="font-size:.8rem;padding:.35rem .85rem;text-decoration:none;display:inline-flex;align-items:center;gap:.35rem">
@@ -546,6 +609,160 @@ function errorPage(msg: string): string {
   return html(`<div class="container" style="text-align:center;padding:4rem 0"><h2>${escapeHtml(msg)}</h2><p style="color:var(--text-muted);margin-top:0.5rem"><a href="/" style="color:var(--accent)">Go home</a></p></div>`);
 }
 
+function verifyStripeSignature(payload: string, sigHeader: string, secret: string): { valid: boolean; details: string[] } {
+  const details: string[] = [];
+  if (!sigHeader) return { valid: false, details: ['Missing Stripe-Signature header'] };
+  if (!secret) return { valid: false, details: ['Missing webhook signing secret'] };
+  const parts = sigHeader.split(',');
+  let timestamp = '';
+  let signature = '';
+  for (const p of parts) {
+    const [k, ...vs] = p.trim().split('=');
+    if (k === 't') timestamp = vs.join('=');
+    if (k === 'v1') signature = vs.join('=');
+  }
+  if (!timestamp) details.push('No timestamp (t=) found in signature header');
+  if (!signature) details.push('No v1 signature found in signature header');
+  if (!timestamp || !signature) return { valid: false, details };
+  const signedPayload = `${timestamp}.${payload}`;
+  let expected: string;
+  try {
+    expected = createHmac('sha256', secret).update(signedPayload).digest('hex');
+  } catch (e) {
+    return { valid: false, details: [`HMAC computation failed: ${e instanceof Error ? e.message : String(e)}`] };
+  }
+  const match = expected.length === signature.length && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  if (match) {
+    details.push('✓ Signature is VALID');
+    const ageSec = (Date.now() / 1000) - parseInt(timestamp, 10);
+    if (ageSec < 300) details.push(`✓ Timestamp is recent (${Math.round(ageSec)}s old, within 5min tolerance)`);
+    else details.push(`⚠ Timestamp is ${Math.round(ageSec)}s old — may exceed tolerance`);
+    return { valid: true, details };
+  }
+  details.push('✗ Signature MISMATCH');
+  details.push(`  Expected: ${expected}`);
+  details.push(`  Received: ${signature}`);
+  return { valid: false, details };
+}
+
+function stripePage(): string {
+  return html(`
+<header><div class="container">
+  <a href="/" class="logo"><span class="dot"></span> req<span>dump</span></a>
+</div></header>
+<div class="container">
+  <a href="/" class="back-link">&larr; Back to reqdump</a>
+
+  <div class="hero" style="padding:2rem 0 1.5rem">
+    <div class="hero-tag"><span style="color:var(--cyan)">&#9679;</span> STRIPE WEBHOOK DEBUGGER</div>
+    <h1>Stripe webhooks? <span>Verify. Inspect. Debug.</span></h1>
+    <p>Use reqdump to capture Stripe webhook payloads, then verify their signatures and inspect every detail — all without signing up.</p>
+  </div>
+
+  <div class="features" style="margin-bottom:1.5rem">
+    <div class="feature">
+      <div class="feature-icon">&#x2713;</div>
+      <h3>Signature verification</h3>
+      <p>Paste your Stripe-Signature header and secret to verify webhook authenticity. No SDK required.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#x25C8;</div>
+      <h3>Capture live webhooks</h3>
+      <p>Create a reqdump endpoint, set it as your Stripe webhook URL, and inspect every event Stripe sends.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#x2194;</div>
+      <h3>Replay events</h3>
+      <p>Replay captured Stripe webhooks against your local dev server to test your handling logic.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:.75rem">Verify a Stripe webhook signature</h3>
+    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">Paste the raw request body, the <code style="color:var(--cyan)">Stripe-Signature</code> header value, and your webhook signing secret to verify authenticity.</p>
+    <form id="stripeVerifyForm" onsubmit="return verifyStripeSig(event)">
+      <label>Request body (raw)</label>
+      <textarea id="stripePayload" rows="6" placeholder='{"id":"evt_...","type":"charge.succeeded","data":{"object":{...}}}' style="width:100%;padding:.65rem .85rem;background:var(--bg);border:1px solid var(--border);border-radius:.4rem;color:var(--text);font-family:var(--font);font-size:.8rem;outline:none;resize:vertical"></textarea>
+      <label style="margin-top:.75rem">Stripe-Signature header</label>
+      <input id="stripeSigHeader" type="text" placeholder="t=1234567890,v1=abc123def456..." style="width:100%;padding:.65rem .85rem;background:var(--bg);border:1px solid var(--border);border-radius:.4rem;color:var(--text);font-family:var(--font);font-size:.8rem;outline:none">
+      <label style="margin-top:.75rem">Webhook signing secret (whsec_...)</label>
+      <input id="stripeSecret" type="password" placeholder="whsec_..." style="width:100%;padding:.65rem .85rem;background:var(--bg);border:1px solid var(--border);border-radius:.4rem;color:var(--text);font-family:var(--font);font-size:.8rem;outline:none">
+      <div style="display:flex;gap:.5rem;margin-top:1rem">
+        <button type="submit" class="replay-btn">Verify signature</button>
+        <span id="stripeSpinner" style="display:none;color:var(--text-dim);font-size:.85rem;align-self:center">Verifying...</span>
+      </div>
+    </form>
+    <div id="stripeResult" style="display:none;margin-top:1rem"></div>
+  </div>
+
+  <div class="card" style="margin-top:1rem">
+    <h3 style="margin-bottom:.75rem">Quick start: Debug Stripe webhooks with reqdump</h3>
+    <pre><span class="cmt"># 1. Create a reqdump endpoint</span>
+<span class="cmd">curl -X POST ${BASE_URL}/api/bins</span>
+<span class="cmt"># Returns: {"bin_id":"abc123","endpoint":"${BASE_URL}/abc123","dashboard":"${BASE_URL}/bin/abc123"}</span>
+
+<span class="cmt"># 2. Set it as your Stripe webhook endpoint</span>
+<span class="cmt"># In Stripe Dashboard > Developers > Webhooks > Add endpoint</span>
+<span class="cmt"># Endpoint URL: ${BASE_URL}/abc123/stripe-webhook</span>
+<span class="cmt"># (or use the Stripe CLI: stripe listen --forward-to ${BASE_URL}/abc123/stripe-webhook)</span>
+
+<span class="cmt"># 3. Open the dashboard to inspect captured events</span>
+<span class="cmd">open ${BASE_URL}/bin/abc123</span></pre>
+  </div>
+
+  <div style="text-align:center;padding:2rem 0 1rem">
+    <a href="/" class="btn btn-primary">Create a webhook endpoint &rarr;</a>
+  </div>
+</div>
+
+<script>
+async function verifyStripeSig(e) {
+  e.preventDefault();
+  const payload = document.getElementById('stripePayload').value.trim();
+  const sigHeader = document.getElementById('stripeSigHeader').value.trim();
+  const secret = document.getElementById('stripeSecret').value.trim();
+  const resultDiv = document.getElementById('stripeResult');
+  const spinner = document.getElementById('stripeSpinner');
+
+  if (!payload || !sigHeader || !secret) {
+    resultDiv.innerHTML = '<div style="padding:.75rem 1rem;background:rgba(255,55,55,.08);border:1px solid rgba(255,55,55,.2);border-radius:.4rem;color:#ff5555;font-size:.85rem">All fields are required</div>';
+    resultDiv.style.display = 'block';
+    return;
+  }
+
+  spinner.style.display = 'inline-block';
+  resultDiv.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/stripe/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload, sig_header: sigHeader, secret })
+    });
+    const data = await r.json();
+    const isOk = data.valid;
+    const bg = isOk ? 'rgba(0,200,83,.08)' : 'rgba(255,55,55,.08)';
+    const border = isOk ? '1px solid rgba(0,200,83,.2)' : '1px solid rgba(255,55,55,.2)';
+    const color = isOk ? '#00c853' : '#ff5555';
+    const icon = isOk ? '&#x2713;' : '&#x2717;';
+    resultDiv.innerHTML = '<div style="padding:1rem;background:' + bg + ';border:' + border + ';border-radius:.4rem;font-size:.85rem;line-height:1.6">' +
+      '<div style="color:' + color + ';font-weight:700;margin-bottom:.5rem;font-family:var(--font)">' + icon + ' ' + (isOk ? 'Signature is VALID' : 'Signature is INVALID') + '</div>' +
+      data.details.map(function(d) {
+        const c = d.startsWith('\\u2713') ? '#00c853' : d.startsWith('\\u26a0') ? '#ffab00' : d.startsWith('\\u2717') ? '#ff5555' : 'var(--text-muted)';
+        return '<div style="color:' + c + ';font-family:var(--font);font-size:.8rem;padding:2px 0">' + d + '</div>';
+      }).join('') +
+      '</div>';
+  } catch (err) {
+    resultDiv.innerHTML = '<div style="padding:.75rem 1rem;background:rgba(255,55,55,.08);border:1px solid rgba(255,55,55,.2);border-radius:.4rem;color:#ff5555;font-size:.85rem">Error: ' + err.message + '</div>';
+  } finally {
+    spinner.style.display = 'none';
+    resultDiv.style.display = 'block';
+  }
+  return false;
+}
+</script>
+`); }
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -603,6 +820,21 @@ app.get('/sitemap.xml', c => new Response(`<?xml version="1.0" encoding="UTF-8"?
 }));
 
 app.get('/health', c => c.json({ ok: true, ts: new Date().toISOString() }));
+
+app.get('/stripe', c => htmlResponse(stripePage()));
+
+app.post('/api/stripe/verify', async c => {
+  let body: Record<string, unknown>;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'invalid JSON body' }, 400); }
+  const payload = (body.payload as string || '').trim();
+  const sigHeader = (body.sig_header as string || '').trim();
+  const secret = (body.secret as string || '').trim();
+  if (!payload || !sigHeader || !secret) {
+    return c.json({ error: 'payload, sig_header, and secret are required' }, 400);
+  }
+  const result = verifyStripeSignature(payload, sigHeader, secret);
+  return c.json(result);
+});
 
 app.get('/api/badge/:id', c => {
   let binId = c.req.param('id');
