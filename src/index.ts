@@ -253,6 +253,14 @@ function landingPage(): string {
   <div class="card" style="text-align:center;border-style:dashed;border-color:var(--border);background:transparent">
     <p style="color:var(--text-muted);font-size:.9rem">Built with <a href="https://hono.dev" style="color:var(--cyan);text-decoration:none">Hono</a> + better-sqlite3 &middot; <a href="https://github.com/bakasa/reqdump" style="color:var(--cyan);text-decoration:none">contribute on GitHub</a></p>
   </div>
+
+  <div style="text-align:center;padding:2rem 0 3rem">
+    <div style="display:inline-flex;gap:.75rem;flex-wrap:wrap;justify-content:center">
+      <a href="https://twitter.com/intent/tweet?text=reqdump%20%E2%80%94%20Open-source%20HTTP%20request%20inspector.%20Zero%20signup.%20One%20click.&url=https://reqdump-production.up.railway.app" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:.8rem;padding:.4rem .85rem">&#120143; Share on X</a>
+      <a href="https://news.ycombinator.com/submitlink?u=https://reqdump-production.up.railway.app&t=reqdump%20%E2%80%94%20open-source%20webhook%20inspector%2C%20no%20signup%20required" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:.8rem;padding:.4rem .85rem">Y Share on HN</a>
+      <a href="https://company-site-production-9f58.up.railway.app/blog/hono-sqlite-webhook-debugger" style="color:var(--text-dim);font-size:.8rem;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem">Read the tech stack &rarr;</a>
+    </div>
+  </div>
 </div>
 `);
 }
