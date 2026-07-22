@@ -34,6 +34,7 @@ open https://reqdump-production.up.railway.app/bin/<your-bin-id>
 - **Auto-expiry**: Requests expire after 24 hours
 - **CORS enabled**: API endpoints support cross-origin requests from browser-based tools
 - **Viral headers**: Every response includes `X-ReqDump` and `X-ReqDump-Link` for easy sharing
+- **Embeddable badge**: Show your live request count in any README — `![reqdump](https://reqdump-production.up.railway.app/api/badge/YOUR_BIN_ID.svg)`
 
 ## Deploy
 
@@ -62,11 +63,27 @@ docker run -p 3000:3000 -e BASE_URL=http://localhost:3000 ghcr.io/bakasa/reqdump
 POST /api/bins              → Create a new dump endpoint
 GET  /api/bins/:id          → List all captured requests (JSON)
 POST /api/replay/:binId/:id → Replay a captured request against a target URL
+GET  /api/badge/:id.svg     → Embeddable request count badge (SVG)
 GET  /bin/:id               → Dashboard HTML
 GET  /bin/:id/req/:id       → Single request detail (HTML)
 ANY  /:id/*                 → Capture a request
 GET  /health                → Health check
 ```
+
+### Badge API
+
+Embed a live request count badge in your project's README or docs page:
+
+```
+GET /api/badge/:binId.svg
+```
+
+```markdown
+[![reqdump](https://reqdump-production.up.railway.app/api/badge/abc123.svg)](https://reqdump-production.up.railway.app/bin/abc123)
+```
+
+Example badge:  
+![reqdump requests](https://reqdump-production.up.railway.app/api/badge/abc123.svg)
 
 ### Replay API
 

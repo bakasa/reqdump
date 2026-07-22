@@ -550,6 +550,30 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function badgeSvg(label: string, value: string, color: string): string {
+  const labelW = label.length * 7.5 + 14;
+  const valueW = value.length * 7.5 + 14;
+  const totalW = labelW + valueW;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="20" role="img" aria-label="${escapeHtml(label)}: ${escapeHtml(value)}">
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r">
+    <rect width="${totalW}" height="20" rx="3" fill="#fff"/>
+  </clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${labelW}" height="20" fill="#555"/>
+    <rect x="${labelW}" width="${valueW}" height="20" fill="${color}"/>
+    <rect width="${totalW}" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="SF Mono,Fira Code,monospace" font-size="11">
+    <text x="${labelW / 2}" y="14">${escapeHtml(label)}</text>
+    <text x="${labelW + valueW / 2}" y="14">${escapeHtml(value)}</text>
+  </g>
+</svg>`;
+}
+
 const app = new Hono();
 
 app.use('/api/*', async (c, next) => {
@@ -579,6 +603,21 @@ app.get('/sitemap.xml', c => new Response(`<?xml version="1.0" encoding="UTF-8"?
 }));
 
 app.get('/health', c => c.json({ ok: true, ts: new Date().toISOString() }));
+
+app.get('/api/badge/:id.svg', c => {
+  const binId = c.req.param('id');
+  const bin = getBin.get(binId) as Record<string, unknown> | undefined;
+  if (!bin) {
+    return new Response(badgeSvg('reqdump', 'bin not found', '#e05'), {
+      headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-cache' }
+    });
+  }
+  const count = (getRequests.all(binId) as Array<Record<string, unknown>>).length;
+  const label = count === 1 ? '1 request' : `${count} requests`;
+  return new Response(badgeSvg('reqdump', label, '#00e5ff'), {
+    headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-cache, max-age=60' }
+  });
+});
 
 app.get('/', c => htmlResponse(landingPage()));
 
